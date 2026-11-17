@@ -26,6 +26,8 @@
 #include "Notebook.hpp"
 #include "NotificationManager.hpp"
 #include "WorkbenchSwarm.hpp"
+
+#include <boost/algorithm/string/predicate.hpp>
 #include "WorkbenchDock.hpp"
 #include "PartPlate.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -196,6 +198,7 @@ std::string workbench_command(const std::string& request)
     } else if (cmd == "new") {
         labelled("new");
         p->new_project(true, true);
+        WorkbenchSwarm::opened(p->model());
         out = state();
     } else if (cmd == "load") {
         std::vector<boost::filesystem::path> paths;
@@ -203,6 +206,10 @@ std::string workbench_command(const std::string& request)
         if (paths.empty()) throw std::runtime_error("load: no paths");
         labelled("load");
         const std::vector<size_t> added = p->load_files(paths, LoadStrategy::LoadModel);
+        // a plate opened (a project file) is just there; only what's added to it after is built
+        bool plate = false;
+        for (const auto& path : paths) plate = plate || boost::iequals(path.extension().string(), ".3mf");
+        if (plate) WorkbenchSwarm::opened(p->model());
         out = {{"added", added}, {"state", state()}};
     } else if (cmd == "arrange") {
         labelled("arrange");

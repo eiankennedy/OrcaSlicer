@@ -5157,6 +5157,7 @@ void GLCanvas3D::on_key(wxKeyEvent& evt)
 
 void GLCanvas3D::on_mouse_wheel(wxMouseEvent& evt)
 {
+    WorkbenchSwarm::user_camera();   // the user zooms: the view is theirs from here
 #ifdef WIN32
     // Try to filter out spurious mouse wheel events comming from 3D mouse.
     if (wxGetApp().plater()->get_mouse3d_controller().process_mouse_wheel())
@@ -5429,6 +5430,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
 {
     if (!m_initialized || !_set_current())
         return;
+    if (evt.Dragging()) WorkbenchSwarm::user_camera();   // the user turns or pans the view: it's theirs from here
 
     // BBS: single snapshot
     Plater::SingleSnapshot single(wxGetApp().plater());
@@ -10520,6 +10522,8 @@ void GLCanvas3D::_render_objects(GLVolumeCollection::ERenderType type, bool with
                         },
                         partly_inside_enable, printable_heights, outlined_volumes);
                 }
+                // Workbench's build swarm: objects being printed, up to the height built so far
+                WorkbenchSwarm::render_rising(*this, m_volumes, wxGetApp().plater()->get_camera().get_view_matrix(), wxGetApp().plater()->get_camera().get_projection_matrix());
             }
             else {
                 // In case a painting gizmo is open, it should render the painted triangles
