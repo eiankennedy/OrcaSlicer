@@ -68,6 +68,7 @@
 #include "slic3r/GUI/Selection.hpp"
 #include "GLCanvas3D.hpp"
 #include "WorkbenchSwarm.hpp"
+#include "WorkbenchDock.hpp"
 #include "SequentialPrintClearance.hpp"
 #ifdef SLIC3R_CAD
 #include "slic3r/GUI/CAD/DesignSketchTool.hpp"   // Design tab: interactive 2D sketch tool
@@ -3380,6 +3381,7 @@ void GLCanvas3D::_render_frame(bool scene_dirty, bool only_init)
     if (m_canvas->IsShownOnScreen() && _set_current()) {
         m_canvas->SwapBuffers();
         m_frame_profiler.mark("swap");
+        if (workbench_docked() && m_canvas->GetSize().GetWidth() > 0) workbench_dock_painted();   // the docked window can show now
         if (!overlay_tick)
             m_render_stats.increment_fps_counter();
         m_presented_signature = signature;

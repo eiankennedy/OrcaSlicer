@@ -243,6 +243,23 @@ static void dock_listen(std::string path, bool owner)
     if (owner) dispatch_async(dispatch_get_main_queue(), ^{ [NSApp terminate:nil]; });
 }
 
+static bool dock_shown = false;
+
+// the window seen at last: once a frame of the 3D view is on screen (one more turn of the run loop after it's
+// presented), or after a while whatever happens
+static void dock_show()
+{
+    if (dock_shown || !dock_window) return;
+    dock_shown = true;
+    dock_window.alphaValue = 1.0;
+}
+
+void workbench_dock_painted()
+{
+    if (dock_shown || !dock_window) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, int64_t(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ dock_show(); });
+}
+
 void workbench_dock_attach(void* ns_view, std::function<std::string(const std::string&)> handler)
 {
     if (dock_window || !workbench_docked()) return;
@@ -267,6 +284,14 @@ void workbench_dock_attach(void* ns_view, std::function<std::string(const std::s
     if (!skipped("appearance")) NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     if (!skipped("policy")) [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     if (!skipped("origin")) [window setFrameOrigin:NSMakePoint(-30000, -30000)];
+    if (!skipped("reveal")) {
+        // until the 3D view's first frame the window is see-through (Workbench's panel shows), and anything of it not
+        // painted yet is the plate's grey rather than white
+        window.alphaValue = 0.0;
+        window.backgroundColor = [NSColor colorWithSRGBRed:0.21 green:0.21 blue:0.23 alpha:1.0];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, int64_t(45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ dock_show(); });
+    } else
+        dock_shown = true;
     std::thread(dock_listen, std::string(getenv("WORKBENCH_DOCK")), true).detach();
     if (const char* control = getenv("WORKBENCH_CONTROL"); control && control[0])
         std::thread(dock_listen, std::string(control), false).detach();

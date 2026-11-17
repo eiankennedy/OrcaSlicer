@@ -22,6 +22,11 @@ std::string workbench_accent();
 // std::exception for an error.
 void workbench_dock_attach(void* ns_view, std::function<std::string(const std::string&)> handler);
 
+// The 3D view has presented a frame: the docked window shows from then on (until its first real frame it stays
+// transparent over Workbench's panel, which would otherwise show the window's blank white or black while OrcaSlicer
+// starts).
+void workbench_dock_painted();
+
 // True while one of Workbench's commands runs: no dialog may wait for an answer then (no one could give one; the
 // command would hang). Dialogs opened anyway are cancelled at once and named in the command's reply.
 bool workbench_busy();
