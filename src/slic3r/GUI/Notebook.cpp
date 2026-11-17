@@ -1,4 +1,5 @@
 #include "Notebook.hpp"
+#include "WorkbenchAccent.hpp"
 
 //#ifdef _WIN32
 
@@ -154,8 +155,8 @@ void ButtonsListCtrl::SetSelection(int sel)
     m_selection = sel;
 
     StateColor bg_color = StateColor(
-        std::pair{wxColour(0, 150, 136), (int) StateColor::Hovered},
-        std::pair{wxColour(0,150, 136), (int) StateColor::Normal});
+        std::pair{Slic3r::GUI::orca_accent(), (int) StateColor::Hovered},
+        std::pair{Slic3r::GUI::orca_accent(), (int) StateColor::Normal});
     m_pageButtons[m_selection]->SetBackgroundColor(bg_color);
 
     StateColor text_color = StateColor(

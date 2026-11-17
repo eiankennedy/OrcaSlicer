@@ -1,6 +1,7 @@
 // Orca: This file is ported from latest PrusaSlicer
 
 #include <algorithm>
+#include "WorkbenchAccent.hpp"
 #include <wx/colour.h>
 #include <wx/chartype.h>
 #include <vector>
@@ -60,7 +61,7 @@ void Chart::draw() {
     }
     
     // draw draggable buttons
-    dc.SetBrush(StateColor::darkModeColorFor(wxColour("#009688"))); // orca color for draggable circles
+    dc.SetBrush(StateColor::darkModeColorFor(Slic3r::GUI::orca_accent())); // orca color for draggable circles
     dc.SetPen(wxPen(StateColor::darkModeColorFor(wxColour("#363636")), 1));
     for (auto& button : m_buttons)
         //dc.DrawRectangle(math_to_screen(button.get_pos())-wxPoint(side/2.,side/2.), wxSize(side,side));

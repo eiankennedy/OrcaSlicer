@@ -67,6 +67,7 @@
 #include <string_view>
 #include "slic3r/GUI/Selection.hpp"
 #include "GLCanvas3D.hpp"
+#include "WorkbenchSwarm.hpp"
 #include "SequentialPrintClearance.hpp"
 #ifdef SLIC3R_CAD
 #include "slic3r/GUI/CAD/DesignSketchTool.hpp"   // Design tab: interactive 2D sketch tool
@@ -3185,6 +3186,8 @@ void GLCanvas3D::_render_frame(bool scene_dirty, bool only_init)
 
     const ImGuiID active_id = ImGui::GetActiveID();
     wxGetApp().imgui()->new_frame();
+    // Workbench's build swarm: what changed on the plate since the last frame (new objects wait for their robot)
+    WorkbenchSwarm::before_render(*this, m_volumes);
 
     if (_update_inactive_plates_visibility())
         scene_dirty = true;
@@ -3339,8 +3342,10 @@ void GLCanvas3D::_render_frame(bool scene_dirty, bool only_init)
             right_margin = SLIDER_RIGHT_MARGIN * scale_factor * GCODE_VIEWER_SLIDER_SCALE;
             bottom_margin = SLIDER_BOTTOM_MARGIN * scale_factor * GCODE_VIEWER_SLIDER_SCALE;
         }
-        wxGetApp().plater()->get_notification_manager()->render_notifications(*this, get_overlay_window_width(), bottom_margin, right_margin);
-        wxGetApp().plater()->get_dailytips()->render();
+        if (!WorkbenchSwarm::hands_off()) {   // Hands off in Workbench: no notices over the plate
+            wxGetApp().plater()->get_notification_manager()->render_notifications(*this, get_overlay_window_width(), bottom_margin, right_margin);
+            wxGetApp().plater()->get_dailytips()->render();
+        }
     }
     m_frame_profiler.mark("notifications");
 
@@ -10981,12 +10986,16 @@ void GLCanvas3D::_render_overlays()
     m_labels.render(sorted_instances);
     m_center_of_mass.render_details(*this);
 
-    _render_3d_navigator();
-
-    _render_canvas_toolbar();
+    if (!WorkbenchSwarm::hands_off()) {   // Hands off in Workbench: only the plate
+        _render_3d_navigator();
+        _render_canvas_toolbar();
+    }
 
     // Recorded by the scene pass, which a reused frame skips.
     wxGetApp().plater()->get_partplate_list().render_hover_tooltip();
+
+    // Workbench's build swarm, over everything else
+    WorkbenchSwarm::render(*this);
 }
 
 // The GL half of the overlay.
@@ -10994,14 +11003,16 @@ void GLCanvas3D::_render_overlay_toolbars()
 {
     glsafe(::glDisable(GL_DEPTH_TEST));
 
-    _render_separator_toolbar_right();
-    _render_separator_toolbar_left();
-    _render_main_toolbar();
-    _render_collapse_toolbar();
-    _render_assemble_view_toolbar();
-    //BBS: GUI refactor: GLToolbar
-    //move gizmos behind of main
-    _render_gizmos_overlay();
+    if (!WorkbenchSwarm::hands_off()) {   // Hands off in Workbench: no toolbars or gizmo bar over the plate
+        _render_separator_toolbar_right();
+        _render_separator_toolbar_left();
+        _render_main_toolbar();
+        _render_collapse_toolbar();
+        _render_assemble_view_toolbar();
+        //BBS: GUI refactor: GLToolbar
+        //move gizmos behind of main
+        _render_gizmos_overlay();
+    }
 
     if (m_layers_editing.last_object_id >= 0 && m_layers_editing.object_max_z() > 0.0f)
         m_layers_editing.render_overlay(*this);

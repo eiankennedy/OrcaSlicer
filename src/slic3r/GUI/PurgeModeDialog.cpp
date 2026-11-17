@@ -1,4 +1,5 @@
 #include "PurgeModeDialog.hpp"
+#include "WorkbenchAccent.hpp"
 
 #include <wx/colour.h>
 #include "slic3r/GUI/GUI_Utils.hpp"
@@ -31,7 +32,7 @@ static const wxColour BgNormalColor = wxColour("#FFFFFF");
 static const wxColour BgSelectColor = wxColour("#E5F0EE");
 
 static const wxColour BorderNormalColor   = wxColour("#CECECE");
-static const wxColour BorderSelectedColor = wxColour("#009688");
+static const wxColour BorderSelectedColor = Slic3r::GUI::orca_accent();
 
 static const wxColour TextNormalBlackColor = wxColour("#262E30");
 static const wxColour TextNormalGreyColor  = wxColour("#6B6B6B");

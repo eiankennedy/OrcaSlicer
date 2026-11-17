@@ -1,4 +1,5 @@
 #include "GUI.hpp"
+#include "WorkbenchAccent.hpp"
 #include "GUI_App.hpp"
 #include "I18N.hpp"
 #include "Field.hpp"
@@ -2665,7 +2666,7 @@ void ColourPicker::draw_bmp_btn()
         if (!dc.IsOk()) return bmp;
         wxGCDC dc2(dc);
 
-        dc2.SetPen(focus ? wxPen(wxColour(StateColor::darkModeColorFor(wxColour("#009688"))), 1) : *wxTRANSPARENT_PEN);
+        dc2.SetPen(focus ? wxPen(wxColour(StateColor::darkModeColorFor(Slic3r::GUI::orca_accent())), 1) : *wxTRANSPARENT_PEN);
         dc2.SetBrush(wxBrush(StateColor::darkModeColorFor(bg_color)));
         dc2.DrawRoundedRectangle(wxRect(wxPoint(0, 0), btn_sz), btn->FromDIP(4));
 

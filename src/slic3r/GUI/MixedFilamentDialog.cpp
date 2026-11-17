@@ -1,4 +1,5 @@
 #include "MixedFilamentDialog.hpp"
+#include "WorkbenchAccent.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -115,7 +116,7 @@ private:
         }
 
         dc.SetFont(GetFont());
-        dc.SetTextForeground(m_hovered ? StateColor::darkModeColorFor(wxColour("#009688"))
+        dc.SetTextForeground(m_hovered ? StateColor::darkModeColorFor(Slic3r::GUI::orca_accent())
                                        : StateColor::darkModeColorFor(wxColour("#262E30")));
         wxSize ts = dc.GetTextExtent(m_text);
         int x = (sz.GetWidth()  - ts.GetWidth())  / 2;

@@ -1,4 +1,5 @@
 #include "BaseTransparentDPIFrame.hpp"
+#include "WorkbenchAccent.hpp"
 
 #include "slic3r/GUI/GUI_Utils.hpp"
 #include "slic3r/GUI/Widgets/StateColor.hpp"
@@ -36,7 +37,7 @@ BaseTransparentDPIFrame::BaseTransparentDPIFrame(
     // ORCA add border
     Bind(wxEVT_PAINT, [this](wxPaintEvent& evt) {
         wxPaintDC dc(this);
-        dc.SetPen(wxPen(StateColor::darkModeColorFor(wxColour("#009688")), FromDIP(2)));
+        dc.SetPen(wxPen(StateColor::darkModeColorFor(Slic3r::GUI::orca_accent()), FromDIP(2)));
         dc.SetBrush(*wxTRANSPARENT_BRUSH);
         dc.DrawRoundedRectangle(0, 0, GetSize().x, GetSize().y, 0);
     });

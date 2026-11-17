@@ -1,4 +1,5 @@
 #include "CloudProvider.hpp"
+#include "WorkbenchAccent.hpp"
 #include "ExportPresetBundleDialog.hpp"
 #include "ICloudServiceAgent.hpp"
 #include "IPrinterAgent.hpp"
@@ -6,6 +7,8 @@
 #include "libslic3r/Technologies.hpp"
 #include "libslic3r/Platform.hpp"
 #include "GUI_App.hpp"
+#include "WorkbenchCommands.hpp"
+#include "WorkbenchDock.hpp"
 #include "BBLTopbar.hpp"
 #include "Shortcuts.hpp"
 #include "DeviceCore/DevConfigUtil.h"
@@ -482,7 +485,7 @@ public:
         m_bg_color = StateColor::darkModeColorFor(wxColour("#FFFFFF"));
         m_fg_color = StateColor::darkModeColorFor(wxColour("#6B6A6A"));
         m_progress_bg_color = StateColor::darkModeColorFor(wxColour("#DFDFDF"));
-        m_progress_fg_color = StateColor::darkModeColorFor(wxColour("#009688"));
+        m_progress_fg_color = StateColor::darkModeColorFor(Slic3r::GUI::orca_accent());
         m_progress_h = FromDIP(6);
         bool dark_mode = m_fg_color != wxColour("#6B6A6A");
         wxSize sz  = m_window->GetClientSize();
@@ -3805,6 +3808,13 @@ bool GUI_App::on_init_inner()
 #endif
     if (scrn) { scrn->SetText(_L("Showing main window") + dots, 95); wxYield(); }
     mainframe->Show(true);
+#ifdef __APPLE__
+    // Docked in Workbench's Print panel: Workbench places the window and drives the app (WorkbenchDock.hpp)
+    if (workbench_docked()) {
+        workbench_dock_attach(mainframe->GetHandle(), [](const std::string& request) { return workbench_command(request); });
+        workbench_set_hands(getenv("WORKBENCH_HANDS") == nullptr || std::string(getenv("WORKBENCH_HANDS")) != "on");
+    }
+#endif
     // Close the splash now that the main UI is visible.
     if (scrn) { scrn->SetText(_L("Showing main window") + dots, 100); scrn->Destroy(); scrn = nullptr; }
     BOOST_LOG_TRIVIAL(info) << "main frame firstly shown";

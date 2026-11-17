@@ -1,4 +1,5 @@
 #include "SwitchButton.hpp"
+#include "../WorkbenchAccent.hpp"
 #include "Button.hpp"
 #include "Label.hpp"
 #include "StaticBox.hpp"
@@ -256,14 +257,14 @@ ModeSwitchButton::ModeSwitchButton(wxWindow* parent, wxWindowID id)
         std::make_pair(wxColour("#D9D9D9"), (int) StateColor::Normal)
     );
     track_background = StateColor(
-        std::make_pair(wxColour("#009688"), (int) StateColor::Disabled),
-        std::make_pair(wxColour("#009688"), (int) StateColor::Normal)
+        std::make_pair(Slic3r::GUI::orca_accent(), (int) StateColor::Disabled),
+        std::make_pair(Slic3r::GUI::orca_accent(), (int) StateColor::Normal)
     );
     track_border = StateColor(
         std::make_pair(wxColour("#D9D9D9"), (int) StateColor::Disabled),
-        std::make_pair(wxColour("#009688"), (int) StateColor::Hovered | ~StateColor::Focused),
+        std::make_pair(Slic3r::GUI::orca_accent(), (int) StateColor::Hovered | ~StateColor::Focused),
         std::make_pair(wxColour("#26A69A"), (int) StateColor::Focused),
-        std::make_pair(wxColour("#009688"), (int) StateColor::Normal)
+        std::make_pair(Slic3r::GUI::orca_accent(), (int) StateColor::Normal)
     );
     dot_active = StateColor(
         std::make_pair(wxColour("#FFFEFE"), (int) StateColor::Disabled),
@@ -575,7 +576,7 @@ void SwitchBoard::doRender(wxDC &dc)
 
 	/*left*/
     if (switch_left) {
-        is_enable ? dc.SetBrush(wxBrush(wxColour(0, 150, 136))) : dc.SetBrush(disable_color);
+        is_enable ? dc.SetBrush(wxBrush(Slic3r::GUI::orca_accent())) : dc.SetBrush(disable_color);
         dc.DrawRoundedRectangle(0, 0, GetSize().x / 2, GetSize().y, 8);
 	}
 
@@ -593,7 +594,7 @@ void SwitchBoard::doRender(wxDC &dc)
 
 	/*right*/
     if (switch_right) {
-        if (is_enable) {dc.SetBrush(wxBrush(wxColour(0, 150, 136)));
+        if (is_enable) {dc.SetBrush(wxBrush(Slic3r::GUI::orca_accent()));
         } else {dc.SetBrush(disable_color);}
         dc.DrawRoundedRectangle(GetSize().x / 2, 0, GetSize().x / 2, GetSize().y, 8);
 	}

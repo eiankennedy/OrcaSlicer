@@ -1,4 +1,5 @@
 #include <array>
+#include "WorkbenchAccent.hpp"
 #include <cstdlib>
 #include <functional>
 #include <glad/gl.h>
@@ -302,7 +303,7 @@ void AccentSlider::OnPaint(wxPaintEvent&)
     int ts = FromDIP(8);
     int pen_w = FromDIP(2);
 
-    wxColour accent_clr = IsEnabled() ? wxColour("#009688") : StateColor::darkModeColorFor(wxColour("#ACACAC")); // use original accent color here to make it more readable
+    wxColour accent_clr = IsEnabled() ? Slic3r::GUI::orca_accent() : StateColor::darkModeColorFor(wxColour("#ACACAC")); // use original accent color here to make it more readable
     wxColour track_clr  = StateColor::darkModeColorFor(IsEnabled() ? wxColour("#CECECE") : wxColour("#DFDFDF"));
 
     int tx = xFromValue();
@@ -588,7 +589,7 @@ public:
         add_label->SetFont(af);
         decompose_label->SetFont(af);
         const bool add_enabled = !m_can_add_filament || m_can_add_filament();
-        const wxColour action_clr = wxColour("#009688");
+        const wxColour action_clr = Slic3r::GUI::orca_accent();
         add_label->SetForegroundColour(add_enabled ? action_clr : header_clr);
         decompose_label->SetForegroundColour(add_enabled ? action_clr : header_clr);
         add_label->SetCursor(wxCursor(add_enabled ? wxCURSOR_HAND : wxCURSOR_ARROW));
@@ -959,7 +960,7 @@ private:
         wxColour row_bg   = StateColor::darkModeColorFor(*wxWHITE);
         wxColour checked_bg = StateColor::darkModeColorFor(wxColour("#BFE1DE"));
         wxColour text_fg  = texture_import_text_colour();
-        wxColour accent   = StateColor::darkModeColorFor(wxColour("#009688"));
+        wxColour accent   = StateColor::darkModeColorFor(Slic3r::GUI::orca_accent());
 
         wxPanel* row = new wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(-1, row_h),
                                    wxTAB_TRAVERSAL | wxFULL_REPAINT_ON_RESIZE);

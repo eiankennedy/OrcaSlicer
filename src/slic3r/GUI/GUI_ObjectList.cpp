@@ -1,4 +1,5 @@
 #include "libslic3r/libslic3r.h"
+#include "WorkbenchAccent.hpp"
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/LifecycleEvents.hpp"
@@ -165,7 +166,7 @@ public:
     }
     virtual void DrawFocusRect(        wxWindow *win, wxDC& dc, const wxRect& rect, int flags = 0) override
     {   // ORCA draw focus rectangle to improve consistency between platforms
-        dc.SetPen(  StateColor::darkModeColorFor(wxColour("#009688")));
+        dc.SetPen(  StateColor::darkModeColorFor(Slic3r::GUI::orca_accent()));
         dc.DrawRectangle(rect);
     }
     virtual void DrawTreeItemButton(   wxWindow *win, wxDC& dc, const wxRect& rect, int flags = 0) override

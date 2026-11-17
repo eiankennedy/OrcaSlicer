@@ -1,7 +1,8 @@
 
 # This ensures dependencies don't use SDK features which are not available in the version specified by Deployment target
 # That can happen when one uses a recent SDK but specifies an older Deployment target
-set(DEP_WERRORS_SDK "-Werror=partial-availability -Werror=unguarded-availability -Werror=unguarded-availability-new")
+# Workbench: newer Xcode (clang 21) turns these into errors in some deps
+set(DEP_WERRORS_SDK "-Werror=partial-availability -Werror=unguarded-availability -Werror=unguarded-availability-new -Wno-nontrivial-memcall -Wno-missing-template-arg-list-after-template-kw -Wno-error=deprecated-declarations -Wno-invalid-specialization -Wno-unknown-warning-option")
 
 set(DEP_CMAKE_OPTS
     "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"

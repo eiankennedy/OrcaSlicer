@@ -2,6 +2,7 @@
 #define slic3r_GUI_SelectMachinePop_hpp_
 
 #include <wx/event.h>
+#include "WorkbenchAccent.hpp"
 #include <wx/dc.h>
 #include <cstddef>
 #include "slic3r/GUI/Widgets/HyperLink.hpp"
@@ -78,7 +79,7 @@ wxDECLARE_EVENT(EVT_BIND_MACHINE, wxCommandEvent);
 #define SELECT_MACHINE_GREY900 wxColour(38, 46, 48)
 #define SELECT_MACHINE_GREY600 wxColour(144, 144, 144)
 #define SELECT_MACHINE_GREY400 wxColour(206, 206, 206)
-#define SELECT_MACHINE_BRAND wxColour(0, 150, 136)
+#define SELECT_MACHINE_BRAND Slic3r::GUI::orca_accent()
 #define SELECT_MACHINE_REMIND wxColour(255, 111, 0)
 #define SELECT_MACHINE_LIGHT_GREEN wxColour(219, 253, 231)
 

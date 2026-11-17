@@ -226,6 +226,10 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoUtils.cpp
     GUI/Gizmos/GLGizmoUtils.hpp
     GUI/GLCanvas3D.cpp
+    GUI/WorkbenchSwarm.cpp
+    GUI/WorkbenchSwarm.hpp
+    GUI/WorkbenchCommands.cpp
+    GUI/WorkbenchCommands.hpp
     GUI/GLCanvas3D.hpp
     GUI/SequentialPrintClearance.hpp
     GUI/GLModel.cpp
@@ -903,6 +907,8 @@ if (APPLE)
     list(APPEND SLIC3R_GUI_SOURCES
             Utils/RetinaHelperImpl.mm
             Utils/MacDarkMode.mm
+            GUI/WorkbenchDock.mm
+            GUI/WorkbenchDock.hpp
             GUI/RemovableDriveManagerMM.mm
             GUI/RemovableDriveManagerMM.h
             GUI/Mouse3DHandlerMac.mm

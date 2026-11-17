@@ -6,6 +6,7 @@
 ************************************************************/
 
 #include "wgtDeviceNozzleRackUpdate.h"
+#include "../WorkbenchAccent.hpp"
 
 #include "slic3r/GUI/DeviceCore/DevNozzleSystem.h"
 #include "slic3r/GUI/DeviceCore/DevUpgrade.h"
@@ -641,7 +642,7 @@ void wgtDeviceNozzleRackHotendUpdate::UpdateInfo(const DevNozzle& nozzle)
         m_used_time->Show(true);
         m_status_label->Show(true);
         m_status_bitmap->Show(true);
-        m_status_label->SetForegroundColour(wxColour("#009688")); // Orca: accent green
+        m_status_label->SetForegroundColour(Slic3r::GUI::orca_accent()); // Orca: accent green
         m_status_label->SetLabel(_L("Refresh"));
         m_status_bitmap->SetBitmap(m_refresh_icon->bmp());
         m_status_bitmap->Refresh();
