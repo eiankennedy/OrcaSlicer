@@ -10,6 +10,7 @@
 
 namespace Slic3r {
 class GLVolumeCollection;
+class Model;
 
 namespace GUI {
 
@@ -24,6 +25,13 @@ void set_hands_off(bool off);
 bool hands_off();
 // The command Claude is running, shown on the next robot's tag.
 void label(const std::string& text);
+// The plate as it is before a command changes it (the canvas may not have drawn it since the last change): what
+// differs from it on the next frame gets a robot.
+void baseline(const Model& model);
+// A change with no object of its own (a setting, a profile): a robot sets it over the plate, tagged with the text.
+void act(const std::string& text);
+// Slicing: robots keep working over the plate until it's done.
+void working(bool on);
 // Before the scene is drawn: find what changed since the last frame, keep new objects hidden until drawn.
 void before_render(GLCanvas3D& canvas, GLVolumeCollection& volumes);
 // In the overlay pass (inside the ImGui frame): the robots and their gestures.

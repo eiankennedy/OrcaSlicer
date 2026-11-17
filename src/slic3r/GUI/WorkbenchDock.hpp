@@ -22,6 +22,15 @@ std::string workbench_accent();
 // std::exception for an error.
 void workbench_dock_attach(void* ns_view, std::function<std::string(const std::string&)> handler);
 
+// True while one of Workbench's commands runs: no dialog may wait for an answer then (no one could give one; the
+// command would hang). Dialogs opened anyway are cancelled at once and named in the command's reply.
+bool workbench_busy();
+// A question or message OrcaSlicer would have shown while a command runs (the reply says it).
+void workbench_asked(const std::string& message);
+// For a command that finishes later (slicing): the handler calls this and returns anything; the reply is sent once
+// poll() returns true (it is called on the main thread every 0.2 s), with the result (JSON text) or an error.
+void workbench_reply_later(std::function<bool(std::string& result, std::string& error)> poll);
+
 }} // namespace Slic3r::GUI
 
 #endif

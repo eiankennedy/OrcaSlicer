@@ -10,6 +10,10 @@ namespace GUI {
 std::string workbench_command(const std::string& request);
 // Hands off (only the 3D view) or on.
 void workbench_set_hands(bool off);
+// Slicing failed with this message (Plater's on_process_completed): the slice command's error.
+void workbench_slice_failed(const std::string& message);
+std::string workbench_slice_error();
+void workbench_slice_error_clear();
 
 } // namespace GUI
 } // namespace Slic3r

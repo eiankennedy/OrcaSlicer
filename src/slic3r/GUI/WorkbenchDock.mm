@@ -12,10 +12,70 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <vector>
+
+#include <wx/dialog.h>
+#include <wx/progdlg.h>
+#include <wx/toplevel.h>
+
 namespace Slic3r { namespace GUI {
 
 static NSWindow* dock_window = nil;
 static std::function<std::string(const std::string&)> dock_handler;
+static int dock_busy = 0;                       // commands running (or waiting to finish: slicing)
+static std::vector<std::string> dock_asked;     // what dialogs would have asked meanwhile
+static NSTimer* dock_watch = nil;
+static std::function<bool(std::string&, std::string&)> dock_later;
+
+bool workbench_busy() { return dock_busy > 0; }
+void workbench_asked(const std::string& message) { if (dock_busy > 0) dock_asked.push_back(message); }
+void workbench_reply_later(std::function<bool(std::string&, std::string&)> poll) { dock_later = std::move(poll); }
+
+// The last resort while a command runs: a modal dialog is cancelled at once (nobody could answer it, hidden or
+// driven by Claude) and the reply names it.
+static void dock_dismiss_modals()
+{
+    if (dock_busy == 0) return;
+    for (wxWindow* w : wxTopLevelWindows) {
+        wxDialog* dlg = dynamic_cast<wxDialog*>(w);
+        // a progress dialog asks nothing: it goes away by itself
+        if (dlg && dlg->IsModal() && !dynamic_cast<wxGenericProgressDialog*>(dlg)) {
+            std::string what = dlg->GetTitle().ToStdString(wxConvUTF8);
+            dock_asked.push_back(what.empty() ? std::string("a dialog") : what);
+            dlg->EndModal(wxID_CANCEL);
+            return;
+        }
+    }
+    // a native alert; not a modal session of another kind (a progress dialog's)
+    NSWindow* modal = NSApp.modalWindow;
+    if (modal && [NSStringFromClass([modal class]) containsString:@"Alert"]) {
+        dock_asked.push_back(modal.title.length ? std::string(modal.title.UTF8String) : std::string("a dialog"));
+        [NSApp abortModal];
+    }
+}
+
+static void dock_busy_begin()
+{
+    if (dock_busy++ > 0) return;
+    dock_asked.clear();
+    // in the common modes, so it fires inside a modal dialog's run loop too
+    dock_watch = [NSTimer timerWithTimeInterval:0.25 repeats:YES block:^(NSTimer*) { dock_dismiss_modals(); }];
+    [[NSRunLoop mainRunLoop] addTimer:dock_watch forMode:NSRunLoopCommonModes];
+}
+
+static void dock_busy_end()
+{
+    if (--dock_busy > 0) return;
+    [dock_watch invalidate];
+    dock_watch = nil;
+}
+
+static std::string dock_said()
+{
+    std::string s;
+    for (size_t i = 0; i < dock_asked.size(); ++i) s += (i ? "; " : "") + dock_asked[i];
+    return s;
+}
 
 bool workbench_docked()
 {
@@ -62,19 +122,63 @@ static void dock_place(NSDictionary* msg)
     }
 }
 
+static NSString* dock_ns(const std::string& s) { return [NSString stringWithUTF8String:s.c_str()] ?: @""; }
+
+static void dock_reply(int fd, id cid, const std::string& result, const std::string& error)
+{
+    if (!error.empty()) {
+        const std::string said = dock_said();
+        dock_write(fd, @{@"id": cid, @"ok": @NO, @"error": dock_ns(said.empty() ? error : error + " (OrcaSlicer: " + said + ")")});
+        return;
+    }
+    NSData* rd = [NSData dataWithBytes:result.data() length:result.size()];
+    id r = [NSJSONSerialization JSONObjectWithData:rd options:NSJSONReadingFragmentsAllowed error:nil];
+    if (!dock_asked.empty() && [r isKindOfClass:[NSDictionary class]]) {
+        NSMutableArray* said = [NSMutableArray array];
+        for (const std::string& a : dock_asked) [said addObject:dock_ns(a)];
+        NSMutableDictionary* m = [r mutableCopy];
+        m[@"orca_said"] = said;
+        r = m;
+    }
+    dock_write(fd, @{@"id": cid, @"ok": @YES, @"result": r ?: [NSNull null]});
+}
+
 static void dock_command(int fd, NSDictionary* msg)
 {
     id cid = msg[@"id"] ?: [NSNull null];
     NSData* data = [NSJSONSerialization dataWithJSONObject:msg options:0 error:nil];
     std::string request(static_cast<const char*>(data.bytes), data.length);
-    @try {
-        std::string result = dock_handler ? dock_handler(request) : std::string("null");
-        NSData* rd = [NSData dataWithBytes:result.data() length:result.size()];
-        id r = [NSJSONSerialization JSONObjectWithData:rd options:NSJSONReadingFragmentsAllowed error:nil];
-        dock_write(fd, @{@"id": cid, @"ok": @YES, @"result": r ?: [NSNull null]});
-    } @catch (NSException* e) {
-        dock_write(fd, @{@"id": cid, @"ok": @NO, @"error": e.reason ?: @"failed"});
+    dock_busy_begin();
+    dock_later = nullptr;
+    std::string result, error;
+    try {
+        result = dock_handler ? dock_handler(request) : std::string("null");
+    } catch (const std::exception& e) {
+        error = e.what();
+        if (error.empty()) error = "failed";
+    } catch (...) {
+        error = "failed";
     }
+    if (error.empty() && dock_later) {
+        // it finishes later: still busy (no dialogs) until it has
+        auto poll = std::move(dock_later);
+        dock_later = nullptr;
+        __block NSTimer* timer = nil;
+        timer = [NSTimer timerWithTimeInterval:0.2 repeats:YES block:^(NSTimer*) {
+            std::string res, err;
+            bool done = false;
+            try { done = poll(res, err); } catch (const std::exception& e) { done = true; err = e.what(); }
+            if (!done) return;
+            [timer invalidate];
+            timer = nil;
+            dock_reply(fd, cid, res, err);
+            dock_busy_end();
+        }];
+        [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+        return;
+    }
+    dock_reply(fd, cid, result, error);
+    dock_busy_end();
 }
 
 static void dock_dispatch(int fd, NSDictionary* msg)
@@ -88,6 +192,14 @@ static void dock_dispatch(int fd, NSDictionary* msg)
         }
     } else {
         dock_place(msg);
+        // Workbench places it as it comes forward, before macOS has finished bringing its window up: over it again
+        // once that's done (the latest placement)
+        static NSDictionary* latest = nil;
+        latest = msg;
+        for (double delay : {0.15, 0.5, 1.0})
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, int64_t(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                if (latest == msg && [msg[@"visible"] boolValue] && ![msg[@"focus"] boolValue]) dock_place(msg);
+            });
     }
 }
 

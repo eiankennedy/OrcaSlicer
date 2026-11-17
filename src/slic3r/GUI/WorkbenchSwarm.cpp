@@ -3,6 +3,9 @@
 #include "3DScene.hpp"
 #include "Camera.hpp"
 #include "GLCanvas3D.hpp"
+#include "GUI_App.hpp"
+#include "Plater.hpp"
+#include "libslic3r/Model.hpp"
 #include "WorkbenchDock.hpp"
 
 #include <imgui/imgui.h>
@@ -59,6 +62,12 @@ struct State
     bool                        seeded   = false;
     std::map<int, BoundingBoxf3> seen;   // each object's box, last frame
     std::set<int>               hidden;  // new objects, waiting for their robot
+    std::map<int, double>       pending; // changed objects not on screen yet (the camera still moving to them)
+    std::vector<std::string>    acts;    // settings and profiles to act out over the plate
+    bool                        working = false;
+    double                      next_work = 0.0;
+    unsigned                    seed = 1;
+    bool                        loose = false; // the baseline came from the model (not a frame): small differences don't count
 } S;
 
 double now()
@@ -166,7 +175,66 @@ ImU32 with_alpha(ImU32 c, float a)
     return (c & 0x00FFFFFFu) | (ImU32(std::clamp(a, 0.f, 1.f) * 255.f) << 24);
 }
 
+// where the plate's objects are on screen (or the middle of the view when there are none, or they are off it)
+ImVec4 plate_area(GLCanvas3D& canvas)
+{
+    BoundingBoxf3 all;
+    for (const auto& [obj, box] : S.seen) all.merge(box);
+    ImVec4 r;
+    if (all.defined && screen_rect(canvas.get_camera(), all, r) && (r.z - r.x) > 40.f && (r.w - r.y) > 30.f) return r;
+    const ImVec2 d = ImGui::GetIO().DisplaySize;
+    return ImVec4(d.x * 0.3f, d.y * 0.3f, d.x * 0.7f, d.y * 0.7f);
+}
+
+float rnd()
+{
+    S.seed = S.seed * 1664525u + 1013904223u;
+    return float((S.seed >> 8) & 0xFFFF) / 65535.f;
+}
+
+// a part of an area, for a robot to work over
+ImVec4 part_of(const ImVec4& a)
+{
+    const float w = (a.z - a.x) * (0.25f + 0.2f * rnd()), h = (a.w - a.y) * (0.25f + 0.2f * rnd());
+    const float x = a.x + (a.z - a.x - w) * rnd(), y = a.y + (a.w - a.y - h) * rnd();
+    return ImVec4(x, y, x + std::max(w, 44.f), y + std::max(h, 34.f));
+}
+
+void redraw()
+{
+    if (Plater* p = wxGetApp().plater())
+        for (GLCanvas3D* c : {p->get_view3D_canvas3D(), p->get_preview_canvas3D()})
+            if (c != nullptr) { c->set_as_dirty(); c->request_extra_frame(); }
+}
+
 } // namespace
+
+void baseline(const Model& model)
+{
+    if (!workbench_docked()) return;
+    std::map<int, BoundingBoxf3> boxes;
+    for (size_t i = 0; i < model.objects.size() && i < 1000; ++i) {
+        const ModelObject* o = model.objects[i];
+        for (size_t k = 0; k < o->instances.size(); ++k) boxes[int(i)].merge(o->instance_bounding_box(k));
+    }
+    S.seen = std::move(boxes);
+    S.seeded = true;
+    S.loose = true;
+}
+
+void act(const std::string& text)
+{
+    if (!S.on) return;
+    S.acts.push_back(text);
+    redraw();
+}
+
+void working(bool on)
+{
+    S.working = on && S.on;
+    S.next_work = 0.0;
+    redraw();
+}
 
 void set_on(bool on, const std::string& accent_hex)
 {
@@ -185,6 +253,8 @@ void set_on(bool on, const std::string& accent_hex)
     } else {
         S.gestures.clear();
         S.hidden.clear();
+        S.acts.clear();
+        S.working = false;
     }
 }
 
@@ -204,22 +274,52 @@ void before_render(GLCanvas3D& canvas, GLVolumeCollection& volumes)
         if (v == nullptr || v->is_wipe_tower || v->is_modifier || v->object_idx() < 0 || v->object_idx() >= 1000) continue;
         boxes[v->object_idx()].merge(v->transformed_bounding_box());
     }
-    if (S.on && S.seeded) {
-        bool first = true;
-        for (const auto& [obj, box] : boxes) {
-            auto it = S.seen.find(obj);
-            const bool fresh = it == S.seen.end();
-            const bool moved = !fresh && ((it->second.min - box.min).norm() > 0.01 || (it->second.max - box.max).norm() > 0.01);
-            if (!fresh && !moved) continue;
-            ImVec4 r;
-            if (!screen_rect(canvas.get_camera(), box, r)) continue;
-            if (fresh) S.hidden.insert(obj);
-            target(r, fresh ? obj : -1, first ? S.label : std::string());
-            first = false;
+    Plater* plater = wxGetApp().plater();
+    const bool editor = plater != nullptr && &canvas == plater->get_view3D_canvas3D();   // the preview's volumes are toolpaths
+    const double t = now();
+    if (editor) {
+        if (S.on && S.seeded) {
+            bool first = true;
+            for (const auto& [obj, box] : boxes) {
+                auto it = S.seen.find(obj);
+                const bool fresh = it == S.seen.end();
+                const double tol = S.loose ? 0.5 : 0.01;
+                const bool moved = !fresh && ((it->second.min - box.min).norm() > tol || (it->second.max - box.max).norm() > tol);
+                if (!fresh && !moved) { S.pending.erase(obj); continue; }
+                ImVec4 r;
+                if (!screen_rect(canvas.get_camera(), box, r)) {
+                    // not on screen yet (the view still on its way to it): tried again next frame, for a while
+                    auto p = S.pending.emplace(obj, t).first;
+                    if (t - p->second < 2.5) {
+                        if (fresh) boxes.erase(obj);   // still new next frame
+                        else boxes[obj] = it->second;  // still moved next frame
+                        canvas.request_extra_frame();
+                        break;   // boxes changed: the rest next frame
+                    }
+                    S.pending.erase(p);
+                    continue;
+                }
+                S.pending.erase(obj);
+                if (fresh) S.hidden.insert(obj);
+                target(r, fresh ? obj : -1, first ? S.label : std::string());
+                first = false;
+            }
+        }
+        S.seen = std::move(boxes);
+        S.seeded = true;
+        S.loose = false;
+    }
+    if (S.on && (!S.acts.empty() || (S.working && t >= S.next_work))) {
+        const ImVec4 area = plate_area(canvas);
+        for (const std::string& text : S.acts) target(part_of(area), -1, text);
+        S.acts.clear();
+        if (S.working && t >= S.next_work) {
+            target(part_of(area), -1, S.next_work == 0.0 ? S.label : std::string());
+            if (S.next_work == 0.0) S.label.clear();
+            S.next_work = t + 0.3;
         }
     }
-    S.seen = std::move(boxes);
-    S.seeded = true;
+    if (!editor) return;
     // a new object waits for its robot (shown as soon as the robot has drawn it out)
     for (GLVolume* v : volumes.volumes)
         if (v != nullptr && S.hidden.count(v->object_idx())) v->visible = false;
@@ -297,7 +397,7 @@ void render(GLCanvas3D& canvas)
     const ImVec2 d = ImGui::GetIO().DisplaySize;
     S.bots.erase(std::remove_if(S.bots.begin(), S.bots.end(), [&](const Bot& b) { return b.leaving && (b.pos.x > d.x + 40.f || b.pos.y > d.y + 40.f); }),
                  S.bots.end());
-    if (busy || moving || !S.hidden.empty()) canvas.request_extra_frame();
+    if (busy || moving || S.working || !S.hidden.empty() || !S.pending.empty()) canvas.request_extra_frame();
 }
 
 } // namespace WorkbenchSwarm

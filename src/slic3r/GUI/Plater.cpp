@@ -2,6 +2,7 @@
 #include "WorkbenchSwarm.hpp"
 #include "WorkbenchDock.hpp"
 #include "WorkbenchAccent.hpp"
+#include "WorkbenchCommands.hpp"
 #include "LazyPage.hpp"
 #include "../Utils/NetworkAgent.hpp"
 #include "IPrinterAgent.hpp"
@@ -13701,6 +13702,7 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
     if (evt.error()) {
         auto message = evt.format_error_message();
         lifecycle_error_msg = message.first;
+        workbench_slice_failed(message.first);   // docked in Workbench: the slice command's error
         if (evt.critical_error()) {
             if (q->m_tracking_popup_menu) {
                 // We don't want to pop-up a message box when tracking a pop-up menu.
