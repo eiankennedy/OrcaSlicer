@@ -23,7 +23,7 @@ namespace WorkbenchSwarm {
 
 namespace {
 
-constexpr float FLY = 0.45f, DRAG = 0.55f, AFTER = 0.9f;
+constexpr float FLY = 0.6f, DRAG = 0.9f, AFTER = 0.9f;
 constexpr size_t BASE = 4;
 const ImU32 COLORS[4] = {IM_COL32(0xD9, 0x77, 0x57, 255), IM_COL32(0xE8, 0xA5, 0x5A, 255), IM_COL32(0xC9, 0x64, 0x42, 255),
                          IM_COL32(0xF0, 0xB0, 0x7A, 255)};
@@ -48,6 +48,8 @@ struct Gesture
     std::string text;
     int         object = -1; // a new object, hidden until drawn
     bool        click  = false;
+    bool        off    = false;  // its object out of view: worked at the edge, with an arrow toward it
+    ImVec2      dir;
 };
 
 struct State
@@ -90,12 +92,16 @@ float ease(float t)
 
 ImVec2 lerp(ImVec2 a, ImVec2 b, float k) { return ImVec2(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k); }
 
+// the camera the 3D view draws with (the plater's; a canvas's own camera member stays unset)
+const Camera& view_camera() { return wxGetApp().plater()->get_camera(); }
+
 // an object's box on screen, in ImGui coordinates (or nothing when it is off screen or behind the camera)
 bool screen_rect(const Camera& cam, const BoundingBoxf3& box, ImVec4& out)
 {
     const std::array<int, 4>& vp = cam.get_viewport();
     if (vp[2] <= 0 || vp[3] <= 0) return false;
-    const Eigen::Matrix4d pv = (cam.get_projection_matrix() * cam.get_view_matrix()).matrix();
+    // as 4x4 matrices: the product of two affine transforms drops the projection's perspective row
+    const Eigen::Matrix4d pv = cam.get_projection_matrix().matrix() * cam.get_view_matrix().matrix();
     const ImVec2 disp = ImGui::GetIO().DisplaySize;
     const float sx = disp.x / float(vp[2]), sy = disp.y / float(vp[3]);
     float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
@@ -115,6 +121,27 @@ bool screen_rect(const Camera& cam, const BoundingBoxf3& box, ImVec4& out)
     x1 = std::min(disp.x, x1); y1 = std::min(disp.y, y1);
     if (x1 - x0 < 3.f || y1 - y0 < 3.f) return false;
     out = ImVec4(x0, y0, x1, y1);
+    return true;
+}
+
+// out of view: a spot at the view's edge toward the box (its centre's direction from the middle of the view), and
+// that direction; false when there's no telling (behind the camera)
+bool edge_toward(const Camera& cam, const BoundingBoxf3& box, ImVec4& out, ImVec2& dir)
+{
+    const Eigen::Matrix4d pv = cam.get_projection_matrix().matrix() * cam.get_view_matrix().matrix();
+    const Vec3d           c  = box.center();
+    const Eigen::Vector4d h  = pv * Eigen::Vector4d(c.x(), c.y(), c.z(), 1.0);
+    if (h.w() <= 1e-6) return false;
+    const ImVec2 disp = ImGui::GetIO().DisplaySize;
+    float dx = float(h.x() / h.w()), dy = float(-h.y() / h.w());
+    const float n = std::hypot(dx, dy);
+    if (n <= 1e-6f) return false;
+    dx /= n; dy /= n;
+    const float pad = 30.f, cx = disp.x * 0.5f, cy = disp.y * 0.5f;
+    const float k = std::min(dx != 0.f ? (cx - pad) / std::abs(dx) : 1e9f, dy != 0.f ? (cy - pad) / std::abs(dy) : 1e9f);
+    const float x = cx + dx * k, y = cy + dy * k;
+    out = ImVec4(x - 10.f, y - 10.f, x + 10.f, y + 10.f);
+    dir = ImVec2(dx, dy);
     return true;
 }
 
@@ -181,7 +208,7 @@ ImVec4 plate_area(GLCanvas3D& canvas)
     BoundingBoxf3 all;
     for (const auto& [obj, box] : S.seen) all.merge(box);
     ImVec4 r;
-    if (all.defined && screen_rect(canvas.get_camera(), all, r) && (r.z - r.x) > 40.f && (r.w - r.y) > 30.f) return r;
+    if (all.defined && screen_rect(view_camera(), all, r) && (r.z - r.x) > 40.f && (r.w - r.y) > 30.f) return r;
     const ImVec2 d = ImGui::GetIO().DisplaySize;
     return ImVec4(d.x * 0.3f, d.y * 0.3f, d.x * 0.7f, d.y * 0.7f);
 }
@@ -251,8 +278,16 @@ void set_on(bool on, const std::string& accent_hex)
             S.bots.push_back(b);
         }
     } else {
+        // whatever was still waiting for its robot is shown as it is
+        if (Plater* p = wxGetApp().plater())
+            if (GLCanvas3D* c = p->get_view3D_canvas3D()) {
+                for (const GLVolume* v : c->get_volumes().volumes)
+                    if (v != nullptr && S.hidden.count(v->object_idx())) const_cast<GLVolume*>(v)->visible = true;
+                c->set_as_dirty();
+            }
         S.gestures.clear();
         S.hidden.clear();
+        S.pending.clear();
         S.acts.clear();
         S.working = false;
     }
@@ -287,21 +322,31 @@ void before_render(GLCanvas3D& canvas, GLVolumeCollection& volumes)
                 const bool moved = !fresh && ((it->second.min - box.min).norm() > tol || (it->second.max - box.max).norm() > tol);
                 if (!fresh && !moved) { S.pending.erase(obj); continue; }
                 ImVec4 r;
-                if (!screen_rect(canvas.get_camera(), box, r)) {
-                    // not on screen yet (the view still on its way to it): tried again next frame, for a while
+                if (!screen_rect(view_camera(), box, r)) {
+                    // not on screen yet (the view still on its way to it): tried again next frame, for a while, and
+                    // out of sight meanwhile (it appears when its robot has drawn it out)
                     auto p = S.pending.emplace(obj, t).first;
-                    if (t - p->second < 2.5) {
+                    if (t - p->second < 1.5) {
+                        S.hidden.insert(obj);
                         if (fresh) boxes.erase(obj);   // still new next frame
                         else boxes[obj] = it->second;  // still moved next frame
                         canvas.request_extra_frame();
                         break;   // boxes changed: the rest next frame
                     }
+                    // still out of view: its robot works at the view's edge, toward it (or over the plate)
                     S.pending.erase(p);
+                    ImVec4 e;
+                    ImVec2 d;
+                    const bool edge = edge_toward(view_camera(), box, e, d);
+                    target(edge ? e : plate_area(canvas), obj, first ? S.label : std::string());
+                    if (edge) { S.gestures.back().off = true; S.gestures.back().dir = d; S.gestures.back().click = true; }
+                    first = false;
                     continue;
                 }
                 S.pending.erase(obj);
-                if (fresh) S.hidden.insert(obj);
-                target(r, fresh ? obj : -1, first ? S.label : std::string());
+                // a new object, or one moved (arranged), appears where it goes once its robot has drawn it out there
+                S.hidden.insert(obj);
+                target(r, obj, first ? S.label : std::string());
                 first = false;
             }
         }
@@ -333,6 +378,16 @@ void render(GLCanvas3D& canvas)
     bool         busy = false;
     // gestures: the marquee drawn out from corner to corner, the tag with the command
     for (auto it = S.gestures.begin(); it != S.gestures.end();) {
+        // a gesture for an object follows it on screen (the view or the object may still be settling)
+        if (it->object >= 0) {
+            BoundingBoxf3 box;
+            for (const GLVolume* v : canvas.get_volumes().volumes)
+                if (v != nullptr && v->object_idx() == it->object && !v->is_modifier && !v->is_wipe_tower) box.merge(v->transformed_bounding_box());
+            ImVec4 r;
+            ImVec2 d;
+            if (box.defined && screen_rect(view_camera(), box, r)) { it->rect = r; it->off = false; it->click = (r.z - r.x) < 40.f && (r.w - r.y) < 30.f; }
+            else if (box.defined && edge_toward(view_camera(), box, r, d)) { it->rect = r; it->off = true; it->dir = d; it->click = true; }
+        }
         const Gesture& g = *it;
         const float    k = ease(float((t - g.start - FLY) / DRAG));
         const float    fade = 1.f - std::clamp(float((t - g.start - FLY - DRAG) / AFTER), 0.f, 1.f);
@@ -344,7 +399,12 @@ void render(GLCanvas3D& canvas)
         if (t > g.start + FLY + DRAG + AFTER) { it = S.gestures.erase(it); continue; }
         busy = true;
         if (t >= g.start + FLY) {
-            if (g.click) {
+            if (g.off) {   // an arrow at the edge, pointing at the work out of view
+                const ImVec2 c((g.rect.x + g.rect.z) * 0.5f + g.dir.x * 6.f, (g.rect.y + g.rect.w) * 0.5f + g.dir.y * 6.f);
+                const ImVec2 sd(-g.dir.y * 8.f, g.dir.x * 8.f);
+                dl->AddTriangleFilled(ImVec2(c.x + g.dir.x * 14.f, c.y + g.dir.y * 14.f), ImVec2(c.x + sd.x, c.y + sd.y), ImVec2(c.x - sd.x, c.y - sd.y),
+                                      with_alpha(S.accent, 0.95f * fade));
+            } else if (g.click) {
                 const ImVec2 c((g.rect.x + g.rect.z) * 0.5f, (g.rect.y + g.rect.w) * 0.5f);
                 dl->AddCircle(c, 6.f + 16.f * k, with_alpha(S.accent, 0.8f * (1.f - k)), 24, 1.5f);
             } else {
@@ -354,7 +414,8 @@ void render(GLCanvas3D& canvas)
             }
             if (!g.text.empty()) {
                 const ImVec2 ts = ImGui::CalcTextSize(g.text.c_str());
-                const ImVec2 p(g.rect.x, g.rect.y - ts.y - 8.f);
+                const ImVec2 dsz = ImGui::GetIO().DisplaySize;
+                const ImVec2 p(std::clamp(g.rect.x, 0.f, std::max(0.f, dsz.x - ts.x - 10.f)), std::clamp(g.rect.y - ts.y - 8.f, 0.f, std::max(0.f, dsz.y - ts.y - 6.f)));
                 dl->AddRectFilled(p, ImVec2(p.x + ts.x + 10.f, p.y + ts.y + 6.f), with_alpha(S.accent, 0.95f * fade));
                 dl->AddText(ImVec2(p.x + 5.f, p.y + 3.f), with_alpha(IM_COL32(255, 255, 255, 255), fade), g.text.c_str());
             }
